@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from gurobipy import Model, GRB, Column, quicksum, LinExpr
+from gurobipy import Model, GRB, quicksum, LinExpr, abs_
 from data_preprocessor import PreprocessData
 
 
@@ -21,6 +21,10 @@ class TwoD_BPP:
         self.H_j = self.B_set['H'].to_dict()
         self.m = len(self.B)
 
+        # Max Params
+        self.L_max = max(self.L_j.values())
+        self.H_max = max(self.H_j.values())
+
         # Parameters of i in I
         self.l_i = self.I_set['l'].to_dict()
         self.h_i = self.I_set['h'].to_dict()
@@ -30,7 +34,7 @@ class TwoD_BPP:
         self.phi_i = self.I_set['phi'].to_dict()
         self.n = len(self.I)
 
-        self.M = 1e9
+        self.M = 1e3
 
         # Variables of j in B
         self.u_j = {}
@@ -50,75 +54,151 @@ class TwoD_BPP:
         self.s_ik = {}
         self.eta1_ik = {}
         self.eta3_ik = {}
+        self.o_ik = {}
         self.beta_lik = {}
         self.nu_ik = {}
         self.m_ik = {}
 
         # Variables of i in I and j in B
         self.p_ij = {}
+        self.model = Model("2D_BPP")
+        # Initialise Model
 
-    def bpp_model(self):
-        model = Model("2D_BPP")
-
+    def setup_variables(self):
         # Define Decision Variables
         for j in self.B:
-            self.u_j[j] = model.addVar(vtype=GRB.BINARY, name=f'u_{j}')
-            self.Rho_j[j] = model.addVar(vtype=GRB.BINARY, name=f'Rho_{j}')
-            self.Phi_j[j] = model.addVar(vtype=GRB.BINARY, name=f'Phi_{j}')
+            self.u_j[j] = self.model.addVar(vtype=GRB.BINARY, name=f'u_{j}')
+            self.Rho_j[j] = self.model.addVar(vtype=GRB.BINARY, name=f'Rho_{j}')
+            self.Phi_j[j] = self.model.addVar(vtype=GRB.BINARY, name=f'Phi_{j}')
 
         for i in self.I:
-            self.x_i[i] = model.addVar(vtype=GRB.CONTINUOUS, name=f'x_{i}')
-            self.xp_i[i] = model.addVar(vtype=GRB.CONTINUOUS, name=f'x\'_{i}')
-            self.z_i[i] = model.addVar(vtype=GRB.CONTINUOUS, name=f'z_{i}')
-            self.zp_i[i] = model.addVar(vtype=GRB.CONTINUOUS, name=f'z\'_{i}')
-            self.g_i[i] = model.addVar(vtype=GRB.BINARY, name=f'g_{i}')
+            self.x_i[i] = self.model.addVar(vtype=GRB.CONTINUOUS, name=f'x_{i}')
+            self.xp_i[i] = self.model.addVar(vtype=GRB.CONTINUOUS, name=f'xp_{i}')
+            self.z_i[i] = self.model.addVar(vtype=GRB.CONTINUOUS, name=f'z_{i}')
+            self.zp_i[i] = self.model.addVar(vtype=GRB.CONTINUOUS, name=f'zp_{i}')
+            self.g_i[i] = self.model.addVar(vtype=GRB.BINARY, name=f'g_{i}')
             for j in self.B:
-                self.p_ij[i, j] = model.addVar(vtype=GRB.BINARY, name=f'p_{i, j}')
+                self.p_ij[i, j] = self.model.addVar(vtype=GRB.BINARY, name=f'p_{i, j}')
             for a in self.a:
                 for b in self.b:
-                    self.r_iab[i, a, b] = model.addVar(vtype=GRB.BINARY, name=f'r_{i, a, b}')
+                    self.r_iab[i, a, b] = self.model.addVar(vtype=GRB.BINARY, name=f'r_{i, a, b}')
             for k in self.I:
-                self.x_ikp[i, k] = model.addVar(vtype=GRB.BINARY, name=f'x^p_{i, k}')
-                self.z_ikp[i, k] = model.addVar(vtype=GRB.BINARY, name=f'z^p_{i, k}')
-                self.h_ik[i, k] = model.addVar(vtype=GRB.BINARY, name=f'h_{i, k}')
-                self.s_ik[i, k] = model.addVar(vtype=GRB.BINARY, name=f's_{i, k}')
-                self.eta1_ik[i, k] = model.addVar(vtype=GRB.BINARY, name=f'eta^1_{i, k}')
-                self.eta3_ik[i, k] = model.addVar(vtype=GRB.BINARY, name=f'eta^3_{i, k}')
-                self.nu_ik[i, k] = model.addVar(vtype=GRB.CONTINUOUS, lb=0, name=f'nu_{i, k}')
-                self.m_ik[i, k] = model.addVar(vtype=GRB.BINARY, name=f'm_{i, k}')
+                self.x_ikp[i, k] = self.model.addVar(vtype=GRB.BINARY, name=f'x^p_{i, k}')
+                self.z_ikp[i, k] = self.model.addVar(vtype=GRB.BINARY, name=f'z^p_{i, k}')
+                self.h_ik[i, k] = self.model.addVar(vtype=GRB.BINARY, name=f'h_{i, k}')
+                self.s_ik[i, k] = self.model.addVar(vtype=GRB.BINARY, name=f's_{i, k}')
+                self.eta1_ik[i, k] = self.model.addVar(vtype=GRB.BINARY, name=f'eta^1_{i, k}')
+                self.eta3_ik[i, k] = self.model.addVar(vtype=GRB.BINARY, name=f'eta^3_{i, k}')
+                self.o_ik[i, k] = self.model.addVar(vtype=GRB.BINARY, name=f'o_{i, k}')
+                self.nu_ik[i, k] = self.model.addVar(vtype=GRB.CONTINUOUS, lb=0, name=f'nu_{i, k}')
+                self.m_ik[i, k] = self.model.addVar(vtype=GRB.BINARY, name=f'm_{i, k}')
                 for l in self.L:
-                    self.beta_lik[i, k, l] = model.addVar(vtype=GRB.BINARY, name=f'beta^{l}_{i, k}')
+                    self.beta_lik[i, k, l] = self.model.addVar(vtype=GRB.BINARY, name=f'beta^{l}_{i, k}')
 
-        model.update()
+        self.model.update()
 
+    def define_obj(self):
         # Define Objective Function
         obj = LinExpr()
 
         for j in self.B:
             obj += self.C_j[j] * self.u_j[j]
 
-        model.setObjective(obj, GRB.MINIMIZE)
-        model.update()
+        self.model.setObjective(obj, GRB.MINIMIZE)
+        self.model.update()
         print("Objective Function Defined")
-        print(model.getObjective())
+        print(self.model.getObjective())
 
-        # Define Constraints
-        # Geometric Constraints
+    def geometric_constraints(self):
         for j in self.B:
-            model.addConstr(quicksum(self.p_ij[i, j] for i in self.I) <= self.M * self.u_j[j], name=f'GC1_{j}')
+            self.model.addConstr(quicksum(self.p_ij[i, j] for i in self.I) <= self.M * self.u_j[j], name=f'GC1_{j}')
         for i in self.I:
-            model.addConstr(quicksum(self.p_ij[i, j] for j in self.B) == 1, name=f'GC2_{i}')
-            model.addConstr(self.xp_i[i] <= quicksum(self.L_j[j] * self.p_ij[i, j] for j in self.B), name=f'GC3_{i}')
-            model.addConstr(self.zp_i[i] <= quicksum(self.H_j[j] * self.p_ij[i, j] for j in self.B), name=f'GC4_{i}')
-            model.addConstr(
-                self.xp_i[i] - self.x_i[i] == self.r_iab[i, 1, 1] * self.l_i[i] + self.r_iab[i, 1, 3] * self.h_i[i], name=f'GC5_{i}')
-            model.addConstr(
-                self.zp_i[i] - self.z_i[i] == self.r_iab[i, 3, 1] * self.l_i[i] + self.r_iab[i, 3, 3] * self.h_i[i], name=f'GC6_{i}')
+            self.model.addConstr(quicksum(self.p_ij[i, j] for j in self.B) == 1, name=f'GC2_{i}')
+            self.model.addConstr(self.xp_i[i] <= quicksum(self.L_j[j] * self.p_ij[i, j] for j in self.B),
+                                 name=f'GC3_{i}')
+            self.model.addConstr(self.zp_i[i] <= quicksum(self.H_j[j] * self.p_ij[i, j] for j in self.B),
+                                 name=f'GC4_{i}')
+            self.model.addConstr(
+                self.xp_i[i] - self.x_i[i] == self.r_iab[i, 1, 1] * self.l_i[i] + self.r_iab[i, 1, 3] * self.h_i[i],
+                name=f'GC5_{i}')
+            self.model.addConstr(
+                self.zp_i[i] - self.z_i[i] == self.r_iab[i, 3, 1] * self.l_i[i] + self.r_iab[i, 3, 3] * self.h_i[i],
+                name=f'GC6_{i}')
             for b in self.b:
-                model.addConstr(quicksum(self.r_iab[i, a, b] for a in self.a) == 1, name=f'GC7_{i, b}')
+                self.model.addConstr(quicksum(self.r_iab[i, a, b] for a in self.a) == 1, name=f'GC7_{i, b}')
             for a in self.a:
-                model.addConstr(quicksum(self.r_iab[i, a, b] for b in self.b) == 1, name=f'GC8_{i, a}')
+                self.model.addConstr(quicksum(self.r_iab[i, a, b] for b in self.b) == 1, name=f'GC8_{i, a}')
+
+    def overlap_constraints(self):
+        for i in self.I:
+            for k in self.I:
+                for j in self.B:
+                    self.model.addConstr(
+                        self.x_ikp[i, k] + self.x_ikp[k, i] + self.z_ikp[i, k] + self.z_ikp[k, i] >= self.p_ij[i, j] +
+                        self.p_ij[k, j] - 1, name=f'OvC1_{i, k, j}')
+                self.model.addConstr(self.xp_i[k] <= self.x_i[i] + (1 - self.x_ikp[i, k]) * self.L_max,
+                                     name=f'OvC2_{i, k}')
+                self.model.addConstr(self.x_i[i] + 1 <= self.xp_i[k] + self.x_ikp[i, k] * self.L_max,
+                                     name=f'OvC3_{i, k}')
+                self.model.addConstr(self.zp_i[k] <= self.z_i[i] + (1 - self.z_ikp[i, k]) * self.H_max,
+                                     name=f'OvC4_{i, k}')
+
+    def orientation_constraints(self):
+        for i in self.I:
+            self.model.addConstr(self.r_iab[i, 3, 1] <= self.r_plus_i[i], name=f'OrC1_{i}')
+            self.model.addConstr(
+                quicksum(quicksum(self.beta_lik[i, j, k] for j in self.I) for k in self.L) + 2 * self.g_i[i] == 2,
+                name=f'OrC2_{i}')
+            self.model.addConstr(self.z_i[i] <= (1 - self.g_i[i]) * self.H_max, name=f'OrC3_{i}')
+            for k in self.I:
+                self.model.addConstr(self.zp_i[k] - self.z_i[i] <= self.nu_ik[i, k], name=f'OrC4_{i, k}')
+                self.model.addConstr(self.z_i[k] - self.zp_i[k] <= self.nu_ik[i, k], name=f'OrC5_{i, k}')
+                self.model.addConstr(
+                    self.nu_ik[i, k] <= self.zp_i[k] - self.z_i[i] + 2 * self.H_max * (1 - self.m_ik[i, k]),
+                    name=f'OrC6_{i, k}')
+                self.model.addConstr(self.nu_ik[i, k] <= self.z_i[i] - self.zp_i[k] + 2 * self.H_max * self.m_ik[i, k],
+                                     name=f'OrC7_{i, k}')
+                self.model.addConstr(self.h_ik[i, k] <= self.nu_ik[i, k], name=f'OrC8_{i, k}')
+                self.model.addConstr(self.nu_ik[i, k] <= self.h_ik[i, k] * self.H_max, name=f'OrC9_{i, k}')
+                self.model.addConstr(self.o_ik[i, k] == self.x_ikp[i, k] + self.x_ikp[k, i], name=f'OrC10_{i, k}')
+                self.model.addConstr((1 - self.s_ik[i, k]) == self.h_ik[i, k] + self.o_ik[i, k], name=f'OrC11_{i, k}')
+                # to be completed
+
+    def fragility_perishability_radioactivity_constraints(self):
+        for k in self.I:
+            self.model.addConstr(quicksum(self.s_ik[i, k] for i in self.I) <= self.n * (1 - self.f_i[k]))
+        for j in self.B:
+            for i in self.I:
+                self.model.addConstr(self.Rho_j[j] >= self.rho_i[i] * self.p_ij[i, j], name=f'PerC_{i, j}')
+                self.model.addConstr(self.Phi_j[j] >= self.phi_i[i] * self.p_ij[i, j], name=f'RadC_{i, j}')
+            self.model.addConstr(self.Rho_j[j] + self.Phi_j[j] <= 1, name=f'PRC_{j}')
+
+    def build_model(self):
+        self.setup_variables()
+        self.define_obj()
+        self.geometric_constraints()
+        self.overlap_constraints()
+        self.orientation_constraints()
+        self.fragility_perishability_radioactivity_constraints()
+        self.model.update()
+
+    def run_model(self):
+        self.model.optimize()
+        status = self.model.status
+
+        if status == GRB.Status.UNBOUNDED:
+            print('The model cannot be solved because it is unbounded')
+
+        elif status == GRB.Status.OPTIMAL or True:
+            f_objective = self.model.objVal
+            print('***** RESULTS ******')
+            print('\nObjective Function Value: \t %g' % f_objective)
+
+        elif status != GRB.Status.INF_OR_UNBD and status != GRB.Status.INFEASIBLE:
+            print('Optimization was stopped with status %d' % status)
+
 
 if __name__ == "__main__":
     run = TwoD_BPP()
-    run.bpp_model()
+    run.build_model()
+    run.run_model()
