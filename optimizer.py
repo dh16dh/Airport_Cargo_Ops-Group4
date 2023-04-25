@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 from gurobipy import Model, GRB, quicksum, LinExpr, abs_
 from data_preprocessor import PreprocessData
-
+from datetime import datetime
+import os
 
 class TwoD_BPP:
     def __init__(self, b_path='B.pickle', r_path='R.pickle'):
@@ -197,8 +198,24 @@ class TwoD_BPP:
         elif status != GRB.Status.INF_OR_UNBD and status != GRB.Status.INFEASIBLE:
             print('Optimization was stopped with status %d' % status)
 
+    def write_output(self):
+        all_vars = self.model.getVars()
+        values = self.model.getAttr("X", all_vars)
+        names = self.model.getAttr("VarName", all_vars)
+        
+        output = pd.Series(values, index=names)
+        output["objVal"] = self.model.objVal
+        
+        now = datetime.now()
+        
+        if "outputs" not in os.listdir(os.getcwd()):
+            os.mkdir("outputs")
+        
+        output.to_csv(f"outputs/model_variables_{now.date()}_{str(now.time()).replace(':', '.')}.csv")
+        
 
 if __name__ == "__main__":
     run = TwoD_BPP()
     run.build_model()
     run.run_model()
+    run.write_output()
