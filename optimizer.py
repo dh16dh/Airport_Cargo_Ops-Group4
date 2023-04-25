@@ -1,3 +1,5 @@
+import pickle
+
 import numpy as np
 import pandas as pd
 from gurobipy import Model, GRB, quicksum, LinExpr, abs_
@@ -6,9 +8,18 @@ from datetime import datetime
 import os
 
 class TwoD_BPP:
-    def __init__(self, b_path='B.pickle', r_path='R.pickle'):
+    def __init__(self, b_path='B.pickle', r_path='R.pickle', subset=None):
         self.B_set = PreprocessData(b_path).process()
         self.I_set = PreprocessData(r_path).process()
+
+        if subset is None:
+            pass
+        elif type(subset) is int:
+            if subset < len(self.I_set):
+                print(f"Using {subset} number of items")
+                self.I_set = self.I_set.iloc[:subset]
+            else:
+                raise UserWarning(f"Subset number passed greater than available set. Using complete dataset instead")
 
         self.B = self.B_set.index.to_list()
         self.I = self.I_set.index.to_list()
@@ -225,23 +236,42 @@ class TwoD_BPP:
             print('Optimization was stopped with status %d' % status)
 
     def write_output(self):
-        all_vars = self.model.getVars()
-        values = self.model.getAttr("X", all_vars)
-        names = self.model.getAttr("VarName", all_vars)
-        
-        output = pd.Series(values, index=names)
-        output["objVal"] = self.model.objVal
-        
+
         now = datetime.now()
-        
-        if "outputs" not in os.listdir(os.getcwd()):
-            os.mkdir("outputs")
-        
-        output.to_csv(f"outputs/model_variables_{now.date()}_{str(now.time()).replace(':', '.')}.csv")
-        
+
+        bins_used = []
+        for j in self.B:
+            if self.u_j[j].X == 1:
+                bins_used.append(j)
+        print(bins_used)
+
+        with open(f'results/bins_used_{now}.pickle', 'wb') as handle:
+            pickle.dump(bins_used, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        Items_in_Bin = dict()
+        for j in bins_used:
+            items_lst = []
+            for i in self.I:
+                if self.p_ij[i, j].X == 1:
+                    items_lst.append(i)
+            Items_in_Bin[j] = items_lst
+        print(Items_in_Bin)
+
+        with open(f'results/Items_in_Bin_{now}.pickle', 'wb') as handle:
+            pickle.dump(Items_in_Bin, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        I_info_solution = dict()
+        for i in self.I:
+            info = [self.x_i[i].X, self.z_i[i].X, self.l_i[i], self.h_i[i]]
+            I_info_solution[i] = info
+        print(I_info_solution)
+
+        with open(f'results/I_info_solution_{now}.pickle', 'wb') as handle:
+            pickle.dump(I_info_solution, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 
 if __name__ == "__main__":
-    run = TwoD_BPP()
+    run = TwoD_BPP(subset=8)
     run.build_model()
     run.run_model(time_limit=1800)
     run.write_output()
