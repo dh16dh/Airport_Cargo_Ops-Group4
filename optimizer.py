@@ -132,6 +132,8 @@ class TwoD_BPP:
     def overlap_constraints(self):
         for i in self.I:
             for k in self.I:
+                if i == k:
+                    continue
                 for j in self.B:
                     self.model.addConstr(
                         self.x_ikp[i, k] + self.x_ikp[k, i] + self.z_ikp[i, k] + self.z_ikp[k, i] >= self.p_ij[i, j] +
@@ -187,17 +189,26 @@ class TwoD_BPP:
         self.setup_variables()
         self.define_obj()
         self.geometric_constraints()
-        # self.overlap_constraints()
-        # self.orientation_constraints()
+        self.overlap_constraints()
+        self.orientation_constraints()
         self.fragility_perishability_radioactivity_constraints()
         self.model.update()
 
-    def run_model(self):
+    def run_model(self, time_limit=30):
+        self.model.setParam('Timelimit', time_limit)  # Set Timeout limit to 15 minutes
+
         self.model.optimize()
         status = self.model.status
 
         if status == GRB.Status.UNBOUNDED:
             print('The model cannot be solved because it is unbounded')
+
+        elif status == GRB.INFEASIBLE:
+            self.model.computeIIS()
+            print('\nThe following constraint(s) cannot be satisfied:')
+            for c in self.model.getConstrs():
+                if c.IISConstr:
+                    print('%s' % c.ConstrName)
 
         elif status == GRB.Status.OPTIMAL or True:
             f_objective = self.model.objVal
