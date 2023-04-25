@@ -11,7 +11,7 @@ class TwoD_BPP:
 
         self.B = self.B_set.index.to_list()
         self.I = self.I_set.index.to_list()
-        self.L = np.arange(1, 3)
+        self.L = [1, 3]
         self.a = [1, 3]
         self.b = [1, 3]
 
@@ -107,7 +107,7 @@ class TwoD_BPP:
         self.model.setObjective(obj, GRB.MINIMIZE)
         self.model.update()
         print("Objective Function Defined")
-        print(self.model.getObjective())
+        print(self.model.getObjective(), '\n')
 
     def geometric_constraints(self):
         for j in self.B:
@@ -162,7 +162,17 @@ class TwoD_BPP:
                 self.model.addConstr(self.nu_ik[i, k] <= self.h_ik[i, k] * self.H_max, name=f'OrC9_{i, k}')
                 self.model.addConstr(self.o_ik[i, k] == self.x_ikp[i, k] + self.x_ikp[k, i], name=f'OrC10_{i, k}')
                 self.model.addConstr((1 - self.s_ik[i, k]) == self.h_ik[i, k] + self.o_ik[i, k], name=f'OrC11_{i, k}')
-                # to be completed
+                for j in self.B:
+                    self.model.addConstr(self.p_ij[i, j] - self.p_ij[k, j] <= 1 - self.s_ik[i, k],
+                                         name=f'OrC12_{i, k, j}')
+                    self.model.addConstr(self.p_ij[k, j] - self.p_ij[i, j] <= 1 - self.s_ik[i, k],
+                                         name=f'OrC13_{i, k, j}')
+                for l in self.L:
+                    self.model.addConstr(self.beta_lik[i, k, l] <= self.s_ik[i, k], name=f'OrC14_{i, k, l}')
+                self.model.addConstr(self.eta1_ik[i, k] <= 1 - self.beta_lik[i, k, 1], name=f'OrC15_{i, k, 1}')
+                self.model.addConstr(self.eta3_ik[i, k] <= 1 - self.beta_lik[i, k, 3], name=f'OrC16_{i, k, 3}')
+                self.model.addConstr(self.x_i[k] <= self.x_i[i] + self.eta1_ik[i, k] * self.L_max, name=f'OrC17_{i, k}')
+                self.model.addConstr(self.xp_i[i] <= self.xp_i[k] + self.eta3_ik[i, k] * self.L_max, name=f'OrC18_{i, k}')
 
     def fragility_perishability_radioactivity_constraints(self):
         for k in self.I:
@@ -177,8 +187,8 @@ class TwoD_BPP:
         self.setup_variables()
         self.define_obj()
         self.geometric_constraints()
-        self.overlap_constraints()
-        self.orientation_constraints()
+        # self.overlap_constraints()
+        # self.orientation_constraints()
         self.fragility_perishability_radioactivity_constraints()
         self.model.update()
 
