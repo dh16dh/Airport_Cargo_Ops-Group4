@@ -194,8 +194,13 @@ class TwoD_BPP:
         self.fragility_perishability_radioactivity_constraints()
         self.model.update()
 
-    def run_model(self, time_limit=30):
-        self.model.setParam('Timelimit', time_limit)  # Set Timeout limit to 15 minutes
+    def run_model(self, time_limit=None):
+        if time_limit is None:
+            pass
+        elif type(time_limit) is int:
+            self.model.setParam('Timelimit', time_limit)  # Set Timeout limit to 15 minutes
+        else:
+            raise TypeError("Incorrect type passed. Time limit should be given as an integer")
 
         self.model.optimize()
         status = self.model.status
@@ -222,4 +227,4 @@ class TwoD_BPP:
 if __name__ == "__main__":
     run = TwoD_BPP()
     run.build_model()
-    run.run_model()
+    run.run_model(time_limit=1800)
