@@ -166,7 +166,7 @@ class TwoD_BPP:
             self.model.addConstr(self.z_i[i] <= (1 - self.g_i[i]) * self.H_max, name=f'OrC3_{i}')
             for k in self.I:
                 self.model.addConstr(self.zp_i[k] - self.z_i[i] <= self.nu_ik[i, k], name=f'OrC4_{i, k}')
-                self.model.addConstr(self.z_i[k] - self.zp_i[k] <= self.nu_ik[i, k], name=f'OrC5_{i, k}')
+                self.model.addConstr(self.z_i[i] - self.zp_i[k] <= self.nu_ik[i, k], name=f'OrC5_{i, k}')
                 self.model.addConstr(
                     self.nu_ik[i, k] <= self.zp_i[k] - self.z_i[i] + 2 * self.H_max * (1 - self.m_ik[i, k]),
                     name=f'OrC6_{i, k}')
@@ -175,7 +175,9 @@ class TwoD_BPP:
                 self.model.addConstr(self.h_ik[i, k] <= self.nu_ik[i, k], name=f'OrC8_{i, k}')
                 self.model.addConstr(self.nu_ik[i, k] <= self.h_ik[i, k] * self.H_max, name=f'OrC9_{i, k}')
                 self.model.addConstr(self.o_ik[i, k] == self.x_ikp[i, k] + self.x_ikp[k, i], name=f'OrC10_{i, k}')
-                self.model.addConstr((1 - self.s_ik[i, k]) == self.h_ik[i, k] + self.o_ik[i, k], name=f'OrC11_{i, k}')
+                # self.model.addConstr((1 - self.s_ik[i, k]) == self.h_ik[i, k] + self.o_ik[i, k], name=f'OrC11_{i, k}')
+                self.model.addConstr((1 - self.s_ik[i, k]) <= self.h_ik[i, k] + self.o_ik[i, k], name=f'OrC11a_{i, k}')
+                self.model.addConstr(2 * (1 - self.s_ik[i, k]) >= self.h_ik[i, k] + self.o_ik[i, k], name=f'OrC11b_{i, k}')
                 for j in self.B:
                     self.model.addConstr(self.p_ij[i, j] - self.p_ij[k, j] <= 1 - self.s_ik[i, k],
                                          name=f'OrC12_{i, k, j}')
@@ -190,7 +192,7 @@ class TwoD_BPP:
 
     def fragility_perishability_radioactivity_constraints(self):
         for k in self.I:
-            self.model.addConstr(quicksum(self.s_ik[i, k] for i in self.I) <= self.n * (1 - self.f_i[k]))
+            self.model.addConstr(quicksum(self.s_ik[i, k] for i in self.I) <= self.n * (1 - self.f_i[k]), name=f'FragC_{k}')
         for j in self.B:
             for i in self.I:
                 self.model.addConstr(self.Rho_j[j] >= self.rho_i[i] * self.p_ij[i, j], name=f'PerC_{i, j}')
@@ -237,15 +239,13 @@ class TwoD_BPP:
 
     def write_output(self):
 
-        now = datetime.now()
-
         bins_used = []
         for j in self.B:
             if self.u_j[j].X == 1:
                 bins_used.append(j)
         print(bins_used)
 
-        with open(f'results/bins_used_{now}.pickle', 'wb') as handle:
+        with open(f'results/bins_used.pickle', 'wb') as handle:
             pickle.dump(bins_used, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         Items_in_Bin = dict()
@@ -257,21 +257,21 @@ class TwoD_BPP:
             Items_in_Bin[j] = items_lst
         print(Items_in_Bin)
 
-        with open(f'results/Items_in_Bin_{now}.pickle', 'wb') as handle:
+        with open(f'results/Items_in_Bin.pickle', 'wb') as handle:
             pickle.dump(Items_in_Bin, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         I_info_solution = dict()
         for i in self.I:
-            info = [self.x_i[i].X, self.z_i[i].X, self.l_i[i], self.h_i[i]]
+            info = [self.x_i[i].X, self.z_i[i].X, self.xp_i[i].X-self.x_i[i].X, self.zp_i[i].X-self.z_i[i].X]
             I_info_solution[i] = info
         print(I_info_solution)
 
-        with open(f'results/I_info_solution_{now}.pickle', 'wb') as handle:
+        with open(f'results/I_info_solution.pickle', 'wb') as handle:
             pickle.dump(I_info_solution, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 if __name__ == "__main__":
-    run = TwoD_BPP(subset=8)
+    run = TwoD_BPP(subset=None)
     run.build_model()
-    run.run_model(time_limit=1800)
+    run.run_model(time_limit=28800)
     run.write_output()
